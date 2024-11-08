@@ -2,3 +2,6 @@
 
 mod app;
 pub use app::TemplateApp;
+
+mod canvas_view;
+pub use canvas_view::CanvasView;
