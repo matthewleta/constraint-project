@@ -5,3 +5,7 @@ pub use app::TemplateApp;
 
 mod canvas_view;
 pub use canvas_view::CanvasView;
+
+
+mod drawing_manager;
+pub use drawing_manager::DrawingManager;
