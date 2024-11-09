@@ -5,6 +5,7 @@ use egui::Pos2;
 
 // BTreeMap used because the highest key value is being queried
 // to get the next key and this structure maintains order
+#[derive(Default)]
 pub struct DrawingManager {
     edge_map: BTreeMap<EdgeHandle, Edge>,
     vertex_map: BTreeMap<VertexHandle, Vertex>,
@@ -24,6 +25,10 @@ impl DrawingManager {
         }
     }
 
+    pub fn get_all_edges(&self) -> Vec<&Edge> {
+        self.edge_map.values().collect()
+    }
+
     pub fn get_edge(&self, eh: EdgeHandle) -> Result<&Edge, DrawingManagerError> {
         self.edge_map
             .get(&eh)
@@ -35,15 +40,17 @@ impl DrawingManager {
         vh_1: VertexHandle,
         vh_2: VertexHandle,
     ) -> Result<EdgeHandle, DrawingManagerError> {
+        if !self.vertex_map.contains_key(&vh_1) {
+            return Err(DrawingManagerError::VertexNotFound(vh_1));
+        }
+        if !self.vertex_map.contains_key(&vh_2) {
+            return Err(DrawingManagerError::VertexNotFound(vh_2));
+        }
+
         // get next Id to use
         let next_id = get_next_id(&self.edge_map);
 
-        let opt = self.edge_map.insert(next_id, Edge::new(vh_1, vh_2));
-
-        // return err if failed
-        if let None = opt {
-            return Err(DrawingManagerError::EdgeNotAdded);
-        }
+        self.edge_map.insert(next_id, Edge::new(vh_1, vh_2));
 
         // add edge reference to vertices
         // let panic to keep simple for maru
@@ -56,21 +63,28 @@ impl DrawingManager {
         Ok(next_id)
     }
 
+    pub fn get_all_vertices_mut(&mut self) -> Vec<&mut Vertex> {
+        self.vertex_map.values_mut().collect()
+    }
+
+    pub fn get_vertex(&self, vh: VertexHandle) -> Result<&Vertex, DrawingManagerError> {
+        self.vertex_map
+            .get(&vh)
+            .ok_or(DrawingManagerError::VertexNotFound(vh))
+    }
+
     pub fn get_vertex_mut(&mut self, vh: VertexHandle) -> Result<&mut Vertex, DrawingManagerError> {
         self.vertex_map
             .get_mut(&vh)
             .ok_or(DrawingManagerError::VertexNotFound(vh))
     }
 
-    pub fn add_vertex(&mut self, position: Pos2) -> Result<VertexHandle, DrawingManagerError> {
+    pub fn add_vertex(&mut self, position: Pos2) -> VertexHandle {
         // get next Id to use
         let next_id = get_next_id(&self.vertex_map);
-
-        let opt = self.vertex_map.insert(next_id, Vertex::new(position));
-        match opt {
-            Some(_) => Ok(next_id),
-            None => Err(DrawingManagerError::VertexNotAdded),
-        }
+        let vert = Vertex::new(position);
+        self.vertex_map.insert(next_id, vert);
+        next_id
     }
 
     // TODO add solver check for collision on existing constraints
@@ -78,18 +92,18 @@ impl DrawingManager {
         &mut self,
         eh: EdgeHandle,
     ) -> Result<ConstraintHandle, DrawingManagerError> {
-        // get next Id to use
+        if !self.edge_map.contains_key(&eh) {
+            return Err(DrawingManagerError::EdgeNotFound(eh));
+        }
+
         let length_constraint = LengthConstraint { edge_handle: eh };
 
         let next_id = get_next_id(&self.constraint_map);
 
-        let opt = self
-            .constraint_map
+        self.constraint_map
             .insert(next_id, Constraint::LENGTH(length_constraint));
-        match opt {
-            Some(_) => Ok(next_id),
-            None => Err(DrawingManagerError::ConstraintNotAdded),
-        }
+
+        Ok(next_id)
     }
 
     // TODO add solver check for collision on existing constraints
@@ -98,6 +112,13 @@ impl DrawingManager {
         eh_1: EdgeHandle,
         eh_2: EdgeHandle,
     ) -> Result<ConstraintHandle, DrawingManagerError> {
+        if !self.edge_map.contains_key(&eh_1) {
+            return Err(DrawingManagerError::EdgeNotFound(eh_1));
+        }
+        if !self.edge_map.contains_key(&eh_2) {
+            return Err(DrawingManagerError::EdgeNotFound(eh_2));
+        }
+
         let edge_1 = self.get_edge(eh_1).unwrap();
         let edge_2 = self.get_edge(eh_2).unwrap();
 
@@ -117,14 +138,10 @@ impl DrawingManager {
         };
 
         let next_id = get_next_id(&self.constraint_map);
-        let opt = self
-            .constraint_map
+        self.constraint_map
             .insert(next_id, Constraint::ANGLE(angle_constraint));
 
-        match opt {
-            Some(_) => Ok(next_id),
-            None => Err(DrawingManagerError::ConstraintNotAdded),
-        }
+        Ok(next_id)
     }
 
     // TODO add solver check for collision on existing constraints
@@ -133,6 +150,13 @@ impl DrawingManager {
         edge_1_handle: EdgeHandle,
         edge_2_handle: EdgeHandle,
     ) -> Result<ConstraintHandle, DrawingManagerError> {
+        if !self.edge_map.contains_key(&edge_1_handle) {
+            return Err(DrawingManagerError::EdgeNotFound(edge_1_handle));
+        }
+        if !self.edge_map.contains_key(&edge_2_handle) {
+            return Err(DrawingManagerError::EdgeNotFound(edge_2_handle));
+        }
+
         // get next Id to use
         let parallel_constraint = ParallelConstraint {
             edge_1_handle,
@@ -141,19 +165,15 @@ impl DrawingManager {
 
         let next_id = get_next_id(&self.constraint_map);
 
-        let opt = self
-            .constraint_map
+        self.constraint_map
             .insert(next_id, Constraint::PARALLEL(parallel_constraint));
-        match opt {
-            Some(_) => Ok(next_id),
-            None => Err(DrawingManagerError::ConstraintNotAdded),
-        }
+        Ok(next_id)
     }
 }
 
 pub struct Edge {
-    start_point_vh: VertexHandle,
-    end_point_vh: VertexHandle,
+    pub start_point_vh: VertexHandle,
+    pub end_point_vh: VertexHandle,
 }
 impl Edge {
     pub fn new(start_point_vh: VertexHandle, end_point_vh: VertexHandle) -> Self {
@@ -164,8 +184,8 @@ impl Edge {
     }
 }
 pub struct Vertex {
-    position: Pos2,
-    edge_handles: Vec<EdgeHandle>,
+    pub position: Pos2,
+    pub edge_handles: Vec<EdgeHandle>,
 }
 
 impl Vertex {
