@@ -9,3 +9,5 @@ pub use canvas_view::CanvasView;
 
 mod drawing_manager;
 pub use drawing_manager::DrawingManager;
+
+mod display_manager;
