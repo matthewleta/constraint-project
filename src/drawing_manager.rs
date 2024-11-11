@@ -3,10 +3,16 @@ use thiserror::Error;
 
 use egui::Pos2;
 
+use crate::display_manager::DisplayManager;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 // BTreeMap used because the highest key value is being queried
 // to get the next key and this structure maintains order
 #[derive(Default)]
 pub struct DrawingManager {
+    display_manager: Option<Rc<RefCell<DisplayManager>>>,
+
     edge_map: BTreeMap<EdgeHandle, Edge>,
     vertex_map: BTreeMap<VertexHandle, Vertex>,
     constraint_map: BTreeMap<ConstraintHandle, Constraint>,
@@ -18,11 +24,10 @@ type ConstraintHandle = i32;
 
 impl DrawingManager {
     pub fn new() -> Self {
-        Self {
-            edge_map: BTreeMap::new(),
-            vertex_map: BTreeMap::new(),
-            constraint_map: BTreeMap::new(),
-        }
+        Default::default()
+    }
+    pub fn set_display_manager(&mut self, display_manager : Rc<RefCell<DisplayManager>>){
+        self.display_manager = Some(display_manager);
     }
 
     pub fn get_all_edges(&self) -> Vec<&Edge> {
