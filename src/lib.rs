@@ -11,3 +11,5 @@ mod drawing_manager;
 pub use drawing_manager::DrawingManager;
 
 mod display_manager;
+
+mod constraint_manager;

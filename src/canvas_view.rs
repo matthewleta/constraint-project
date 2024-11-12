@@ -1,68 +1,92 @@
 use egui::{emath, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
-use crate::drawing_manager::DrawingManager;
+use crate::constraint_manager::ConstraintManager;
 use crate::display_manager::DisplayManager;
+use crate::drawing_manager::DrawingManager;
 
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct CanvasView {
     drawing_manager: Rc<RefCell<DrawingManager>>,
     display_manager: Rc<RefCell<DisplayManager>>,
+    constraint_manager: Rc<RefCell<ConstraintManager>>,
     //network : DrawingNetwork
-} 
+}
 
 impl Default for CanvasView {
-    fn default() -> Self{
+    fn default() -> Self {
         let drawing_manager = Rc::new(RefCell::new(DrawingManager::new()));
         let display_manager = Rc::new(RefCell::new(DisplayManager::new()));
+        let constraint_manager = Rc::new(RefCell::new(ConstraintManager::new()));
 
-        drawing_manager.borrow_mut().set_display_manager(Rc::clone(&display_manager));
-        display_manager.borrow_mut().set_drawing_manager(Rc::clone(&drawing_manager));
+        drawing_manager
+            .borrow_mut()
+            .set_display_manager(Rc::clone(&display_manager));
+        display_manager
+            .borrow_mut()
+            .set_drawing_manager(Rc::clone(&drawing_manager));
+        display_manager
+            .borrow_mut()
+            .set_constraint_manager(Rc::clone(&constraint_manager));
+        constraint_manager
+            .borrow_mut()
+            .set_drawing_manager(Rc::clone(&drawing_manager));
 
-        
         Self {
             display_manager,
             drawing_manager,
+            constraint_manager,
         }
     }
 }
 
 impl CanvasView {
-    pub fn setup_test_values(&mut self){
-        
-        let mut drawing_manager_mut = self.drawing_manager.borrow_mut();
-        let mut display_manager_mut = self.display_manager.borrow_mut();
+    pub fn setup_test_values(&mut self) {
+        let mut edge_handle_1 = 0;
+        let mut edge_handle_2 = 0;
+        let mut edge_handle_3 = 0;
 
-        let vh_1 = drawing_manager_mut.add_vertex(Pos2::new(10., 10.));
-        display_manager_mut.add_vertex(vh_1);
-        
+        {
+            let mut drawing_manager_mut = self.drawing_manager.borrow_mut();
+            let mut display_manager_mut = self.display_manager.borrow_mut();
 
-        let vh_2 = drawing_manager_mut.add_vertex(Pos2::new(10., 50.));
-        display_manager_mut.add_vertex(vh_2);
-        let vh_3 = drawing_manager_mut.add_vertex(Pos2::new(50., 50.));
-        display_manager_mut.add_vertex(vh_3);
-        let vh_4 = drawing_manager_mut.add_vertex(Pos2::new(50., 10.));
-        display_manager_mut.add_vertex(vh_4);
+            let vh_1 = drawing_manager_mut.add_vertex(Pos2::new(10., 10.));
+            display_manager_mut.add_vertex(vh_1);
 
-        let eh_1 = drawing_manager_mut.add_edge(vh_1, vh_2).unwrap();
-        display_manager_mut.add_edge(eh_1);
-        let eh_2 = drawing_manager_mut.add_edge(vh_2, vh_3).unwrap();
-        display_manager_mut.add_edge(eh_2);
-        let eh_3 = drawing_manager_mut.add_edge(vh_3, vh_4).unwrap();
-        display_manager_mut.add_edge(eh_3);
-        
+            let vh_2 = drawing_manager_mut.add_vertex(Pos2::new(10., 50.));
+            display_manager_mut.add_vertex(vh_2);
+            let vh_3 = drawing_manager_mut.add_vertex(Pos2::new(50., 50.));
+            display_manager_mut.add_vertex(vh_3);
+            let vh_4 = drawing_manager_mut.add_vertex(Pos2::new(50., 10.));
+            display_manager_mut.add_vertex(vh_4);
+
+            edge_handle_1 = drawing_manager_mut.add_edge(vh_1, vh_2).unwrap();
+            display_manager_mut.add_edge(edge_handle_1);
+            edge_handle_2 = drawing_manager_mut.add_edge(vh_2, vh_3).unwrap();
+            display_manager_mut.add_edge(edge_handle_2);
+            edge_handle_3 = drawing_manager_mut.add_edge(vh_3, vh_4).unwrap();
+            display_manager_mut.add_edge(edge_handle_3);
+        }
+
+        // separate scope required since constraint_manager will mutably borrow
+        // the drawing manager internally, and rust won't allow it to happen twice
+
+        //let drawing_manager = self.drawing_manager.borrow();
+        let mut constraint_manager_mut = self.constraint_manager.borrow_mut();
+
+        let _ = constraint_manager_mut.add_length_constraint(edge_handle_3);
     }
 
     pub fn update(&mut self, ui: &mut egui::Ui) {
-
         let display_manager = Rc::clone(&self.display_manager);
         Frame::canvas(ui.style()).show(ui, |ui| {
             let (response, painter) =
-            ui.allocate_painter(Vec2::new(ui.available_width(), 300.0), Sense::hover());
+                ui.allocate_painter(Vec2::new(ui.available_width(), 300.0), Sense::hover());
 
-
-            display_manager.borrow_mut().update_interaction(ui, &response);
+            display_manager
+                .borrow_mut()
+                .update_interaction(ui, &response);
 
             display_manager.borrow().draw(ui, &response, &painter);
 
@@ -70,11 +94,11 @@ impl CanvasView {
         });
     }
 
-    pub fn print_values(&self){
+    pub fn print_values(&self) {
         let edges_ref = self.drawing_manager.borrow();
         let edges = edges_ref.get_all_edges();
 
-        for edge in edges{
+        for edge in edges {
             println!("{}", edge.start_point_vh);
         }
     }
@@ -87,13 +111,13 @@ impl CanvasView {
     //     //     response.rect,
     //     // );
     //     // let control_point_radius = 5.;
-        
+
     //     // let control_point_shapes: Vec<Shape> = self
     //     //     .drawing_manager.get_all_vertices_mut()
     //     //     .iter_mut()
     //     //     .enumerate()
     //     //     .map(|(i, vertex)| {
-                
+
     //     //         let mut pt_data = vertex.position;
 
     //     //         let size = Vec2::splat(2.0 * control_point_radius);

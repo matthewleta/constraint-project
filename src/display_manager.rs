@@ -1,7 +1,9 @@
+use crate::constraint_manager::{ConstraintManager, SolverResponse, SolverState};
 use crate::drawing_manager::DrawingManager;
+
 use std::collections::HashMap;
 
-use egui::{emath, Color32, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, Painter};
+use egui::{emath, Color32, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2};
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -13,6 +15,7 @@ type ConstraintHandle = i32;
 #[derive(Default)]
 pub struct DisplayManager {
     drawing_manager: Option<Rc<RefCell<DrawingManager>>>,
+    constraint_manager: Option<Rc<RefCell<ConstraintManager>>>,
 
     edges: HashMap<VertexHandle, EdgeDisplay>,
     vertices: HashMap<EdgeHandle, VertexDisplay>,
@@ -26,6 +29,9 @@ impl DisplayManager {
     pub fn set_drawing_manager(&mut self, drawing_manager: Rc<RefCell<DrawingManager>>) {
         self.drawing_manager = Some(drawing_manager);
     }
+    pub fn set_constraint_manager(&mut self, constraint_manager: Rc<RefCell<ConstraintManager>>) {
+        self.constraint_manager = Some(constraint_manager);
+    }
 
     pub fn update_interaction(&mut self, ui: &Ui, response: &Response) {
         self.vertices.iter_mut().for_each(|v| {
@@ -33,7 +39,7 @@ impl DisplayManager {
         });
     }
 
-    pub fn draw(&self, ui: &mut Ui, response: &Response, painter : &Painter) {
+    pub fn draw(&self, ui: &mut Ui, response: &Response, painter: &Painter) {
         let segments: Vec<Shape> = self
             .edges
             .iter()
@@ -56,9 +62,12 @@ impl DisplayManager {
     }
 
     pub fn add_vertex(&mut self, vertex_handle: VertexHandle) {
-        let weak = Rc::downgrade(self.drawing_manager.as_mut().unwrap());
-        self.vertices
-            .insert(vertex_handle, VertexDisplay::new(weak, vertex_handle));
+        let dm_weak = Rc::downgrade(self.drawing_manager.as_mut().unwrap());
+        let constr_weak = Rc::downgrade(self.constraint_manager.as_mut().unwrap());
+        self.vertices.insert(
+            vertex_handle,
+            VertexDisplay::new(dm_weak, constr_weak, vertex_handle),
+        );
         println!("vert added");
     }
 
@@ -80,27 +89,36 @@ impl DisplayManager {
 
 pub struct VertexDisplay {
     drawing_manager: Weak<RefCell<DrawingManager>>,
+    constraint_manager: Weak<RefCell<ConstraintManager>>,
+
     vertex_handle: VertexHandle,
     is_selected: bool,
+    is_being_dragged: bool,
     is_hovered: bool,
+
+    pre_drag_position: Pos2,
+    current_drag_position: Pos2,
 }
 
 impl VertexDisplay {
     pub fn new(
         drawing_manager: Weak<RefCell<DrawingManager>>,
+        constraint_manager: Weak<RefCell<ConstraintManager>>,
         vertex_handle: VertexHandle,
     ) -> Self {
         Self {
             drawing_manager,
+            constraint_manager,
             vertex_handle,
             is_selected: false,
+            is_being_dragged: false,
             is_hovered: false,
+            pre_drag_position: Pos2::new(0., 0.),
+            current_drag_position: Pos2::new(0., 0.)
         }
     }
 
     pub fn interact(&mut self, ui: &Ui, response: &Response) {
-        let mut pt_data = self.get_point();
-
         let buffer_size = Vec2::splat(30.0);
 
         let to_screen = emath::RectTransform::from_to(
@@ -108,28 +126,95 @@ impl VertexDisplay {
             response.rect,
         );
 
-        let point_in_screen = to_screen.transform_pos(pt_data);
+        let point_in_screen = to_screen.transform_pos(self.get_vertex_point());
         let point_rect = Rect::from_center_size(point_in_screen, buffer_size);
         let point_id = response.id.with(self.vertex_handle);
-        let point_response = ui.interact(point_rect, point_id, Sense::hover());
+        let point_response = ui.interact(point_rect, point_id, Sense::click_and_drag());
 
         self.is_hovered = false;
-        self.is_selected = false;
 
-        if point_response.hovered() {
-            let cursor_pt = point_response.hover_pos().unwrap();          
+        let cursor_opt = point_response.hover_pos();
+
+        if point_response.hovered() && cursor_opt.is_some() {
+            let cursor_pt = point_response.hover_pos().unwrap();
             let cursor_pt = to_screen.inverse().transform_pos(cursor_pt);
 
-            if self.is_point_on_vertex(cursor_pt, 10.0) {
-                println!("in the zone");
+            let is_on_vertex = self.is_point_on_vertex(cursor_pt, 10.0);
+
+            if is_on_vertex {
                 self.is_hovered = true;
 
-                if point_response.dragged() {
-                    self.is_selected = true;
+                if point_response.clicked() {
+                    self.is_selected = !self.is_selected;
                 }
-            } else {
-                println!("not in the zone");
+
+                // drag begins -- initiate drag parameters
+                if !self.is_being_dragged && point_response.dragged(){
+                    // set previous position before starting to drag
+                    let dm_shared = self.drawing_manager.upgrade().unwrap();
+                    let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                    self.pre_drag_position = dm_borrow.get_vertex_mut(self.vertex_handle).unwrap().position;
+                    self.current_drag_position = self.pre_drag_position;
+
+                    self.is_being_dragged = true;
+                    println!("drag start");
+
+                }
             }
+        }
+
+        // drag ends
+        // this is outside of the hovered() call so that it will
+        // properly be called without being in the interact region
+        if self.is_being_dragged && !point_response.dragged(){
+            // let dm_shared = self.drawing_manager.upgrade().unwrap();
+            // let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+            // let vertex = dm_borrow.get_vertex_mut(self.vertex_handle).unwrap();
+            // vertex.position = self.current_drag_position;
+
+            self.is_being_dragged = false;
+            println!("drag end");
+        }
+
+        if self.is_being_dragged {
+            // let mut current_vertex_pos = Pos2::new(0., 0.);
+            // {
+            //     let dm_shared = self.drawing_manager.upgrade().unwrap();
+            //     let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+            //     let vertex = dm_borrow.get_vertex_mut(self.vertex_handle).unwrap();
+            //     current_vertex_pos = vertex.position;
+            // }
+
+            if cursor_opt.is_some(){
+                let cursor_pt = point_response.hover_pos().unwrap();
+                self.current_drag_position = to_screen.inverse().transform_pos(cursor_pt);
+            }
+    
+
+            let constr_shared = self.constraint_manager.upgrade().unwrap();
+            let mut constr_borrow = constr_shared.as_ref().borrow_mut();
+
+            let try_pt = self.current_drag_position;
+            
+            let solver_response = constr_borrow.solve_for_vertex(self.vertex_handle, &self.pre_drag_position, &try_pt);
+
+            // get mutable vertex again, so we can modify it
+            let dm_shared = self.drawing_manager.upgrade().unwrap();
+            let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+            let vertex = dm_borrow.get_vertex_mut(self.vertex_handle).unwrap();
+
+
+            match solver_response.state {
+                SolverState::Free => {println!("Free"); vertex.position = try_pt},
+                SolverState::Locked => {println!("Locked");()},
+                SolverState::Partial => {
+                    //println!("Partial {}", solver_response.new_pos.unwrap());
+                    //vertex.position = Pos2::new(150., 150.);
+                    vertex.position = solver_response.new_pos.unwrap()
+                },
+            }
+
+            //vertex.position = try_pt;
         }
 
         // point_response.interact_pointer_pos()
@@ -145,11 +230,19 @@ impl VertexDisplay {
     }
 
     pub fn get_shape(&self, response: &Response) -> Shape {
-        let base_color = if self.is_selected {
+        let base_color = if self.is_selected || self.is_being_dragged {
             Color32::WHITE.gamma_multiply(0.9)
         } else {
             Color32::GRAY
         };
+
+        // let base_color = if self.is_selected {
+        //     Color32::WHITE.gamma_multiply(0.9)
+        // } else if self.is_being_dragged {Color32::GREEN}
+        // else {
+        //     Color32::GRAY
+        // };
+        
         let hover_color = base_color.clone().gamma_multiply(1.2);
 
         let current_color = if self.is_hovered {
@@ -163,14 +256,16 @@ impl VertexDisplay {
             response.rect,
         );
 
-        let point_in_screen = to_screen.transform_pos(self.get_point());
-        //let stroke = Stroke::new(2., current_color);
+        //let circ_position = if self.is_being_dragged {self.current_drag_position} else {self.get_vertex_point()};
+        let circ_position = self.get_vertex_point();
+
+        let point_in_screen = to_screen.transform_pos(circ_position);
 
         let control_point_radius = 10.0;
 
         Shape::circle_filled(point_in_screen, control_point_radius, current_color)
     }
-    fn get_point(&self) -> Pos2 {
+    fn get_vertex_point(&self) -> Pos2 {
         let drawing_manager_rc = self.drawing_manager.upgrade().unwrap();
         let drawing_manager = drawing_manager_rc.borrow_mut();
 
@@ -180,8 +275,7 @@ impl VertexDisplay {
             .position
     }
     fn is_point_on_vertex(&self, point: Pos2, radius: f32) -> bool {
-        let dist = point.distance(self.get_point());
-        println!("{}",dist);
+        let dist = point.distance(self.get_vertex_point());
         dist <= radius
     }
 }

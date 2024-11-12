@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use thiserror::Error;
 
-use egui::Pos2;
+use egui::{Pos2, Vec2};
 
 use crate::display_manager::DisplayManager;
 use std::cell::RefCell;
@@ -15,7 +15,6 @@ pub struct DrawingManager {
 
     edge_map: BTreeMap<EdgeHandle, Edge>,
     vertex_map: BTreeMap<VertexHandle, Vertex>,
-    constraint_map: BTreeMap<ConstraintHandle, Constraint>,
 }
 
 type EdgeHandle = i32;
@@ -28,6 +27,10 @@ impl DrawingManager {
     }
     pub fn set_display_manager(&mut self, display_manager : Rc<RefCell<DisplayManager>>){
         self.display_manager = Some(display_manager);
+    }
+
+    pub fn has_edge(&self, eh: &EdgeHandle) -> bool{
+        self.edge_map.contains_key(&eh)
     }
 
     pub fn get_all_edges(&self) -> Vec<&Edge> {
@@ -68,6 +71,9 @@ impl DrawingManager {
         Ok(next_id)
     }
 
+    pub fn has_vertex(&self, vh: &VertexHandle) -> bool{
+        self.vertex_map.contains_key(&vh)
+    }
     pub fn get_all_vertices_mut(&mut self) -> Vec<&mut Vertex> {
         self.vertex_map.values_mut().collect()
     }
@@ -91,89 +97,6 @@ impl DrawingManager {
         self.vertex_map.insert(next_id, vert);
         next_id
     }
-
-    // TODO add solver check for collision on existing constraints
-    pub fn add_length_constraint(
-        &mut self,
-        eh: EdgeHandle,
-    ) -> Result<ConstraintHandle, DrawingManagerError> {
-        if !self.edge_map.contains_key(&eh) {
-            return Err(DrawingManagerError::EdgeNotFound(eh));
-        }
-
-        let length_constraint = LengthConstraint { edge_handle: eh };
-
-        let next_id = get_next_id(&self.constraint_map);
-
-        self.constraint_map
-            .insert(next_id, Constraint::LENGTH(length_constraint));
-
-        Ok(next_id)
-    }
-
-    // TODO add solver check for collision on existing constraints
-    pub fn add_angle_constraint(
-        &mut self,
-        eh_1: EdgeHandle,
-        eh_2: EdgeHandle,
-    ) -> Result<ConstraintHandle, DrawingManagerError> {
-        if !self.edge_map.contains_key(&eh_1) {
-            return Err(DrawingManagerError::EdgeNotFound(eh_1));
-        }
-        if !self.edge_map.contains_key(&eh_2) {
-            return Err(DrawingManagerError::EdgeNotFound(eh_2));
-        }
-
-        let edge_1 = self.get_edge(eh_1).unwrap();
-        let edge_2 = self.get_edge(eh_2).unwrap();
-
-        let verts = find_shared_and_unmatched_vertices(
-            edge_1.start_point_vh,
-            edge_1.end_point_vh,
-            edge_2.start_point_vh,
-            edge_2.end_point_vh,
-        )?; // forward error
-
-        let angle_constraint = AngleConstraint {
-            pivot_vert_handle: verts.0,
-            edge_1_handle: eh_1,
-            edge_1_outer_vert_handle: verts.1 .0,
-            edge_2_handle: eh_2,
-            edge_2_outer_vert_handle: verts.1 .1,
-        };
-
-        let next_id = get_next_id(&self.constraint_map);
-        self.constraint_map
-            .insert(next_id, Constraint::ANGLE(angle_constraint));
-
-        Ok(next_id)
-    }
-
-    // TODO add solver check for collision on existing constraints
-    pub fn add_parallel_constraint(
-        &mut self,
-        edge_1_handle: EdgeHandle,
-        edge_2_handle: EdgeHandle,
-    ) -> Result<ConstraintHandle, DrawingManagerError> {
-        if !self.edge_map.contains_key(&edge_1_handle) {
-            return Err(DrawingManagerError::EdgeNotFound(edge_1_handle));
-        }
-        if !self.edge_map.contains_key(&edge_2_handle) {
-            return Err(DrawingManagerError::EdgeNotFound(edge_2_handle));
-        }
-
-        // get next Id to use
-        let parallel_constraint = ParallelConstraint {
-            edge_1_handle,
-            edge_2_handle,
-        };
-
-        let next_id = get_next_id(&self.constraint_map);
-
-        self.constraint_map
-            .insert(next_id, Constraint::PARALLEL(parallel_constraint));
-        Ok(next_id)
-    }
 }
 
 pub struct Edge {
@@ -186,6 +109,23 @@ impl Edge {
             start_point_vh,
             end_point_vh,
         }
+    }
+    pub fn direction_from_edge( drawing_manager : &DrawingManager, edge : &Edge) -> Vec2{
+
+        let pos_1 = drawing_manager.vertex_map.get(&edge.start_point_vh).unwrap().position;
+        let pos_2 = drawing_manager.vertex_map.get(&edge.end_point_vh).unwrap().position;
+
+        let dir = pos_2 - pos_1;
+        if dir.length() < 0.001{
+            panic!()
+        }
+
+        dir.normalized()
+    }
+    pub fn direction_from_handle( drawing_manager : &DrawingManager, edge_handle : EdgeHandle) -> Vec2{
+        let edge = drawing_manager.edge_map.get(&edge_handle).unwrap();
+        
+        Edge::direction_from_edge(drawing_manager, edge)
     }
 }
 pub struct Vertex {
@@ -200,56 +140,6 @@ impl Vertex {
             edge_handles: vec![],
         }
     }
-}
-
-enum Constraint {
-    LENGTH(LengthConstraint),
-    ANGLE(AngleConstraint),
-    PARALLEL(ParallelConstraint),
-}
-
-impl Constraint {
-    fn try_get_length(&self) -> Option<&LengthConstraint> {
-        match self {
-            Constraint::LENGTH(constraint) => Some(constraint),
-            _ => None,
-        }
-    }
-
-    fn try_get_angle(&self) -> Option<&AngleConstraint> {
-        match self {
-            Constraint::ANGLE(constraint) => Some(constraint),
-            _ => None,
-        }
-    }
-
-    fn try_get_parallel(&self) -> Option<&ParallelConstraint> {
-        match self {
-            Constraint::PARALLEL(constraint) => Some(constraint),
-            _ => None,
-        }
-    }
-}
-
-// Length Constraint is primarily around an edge only
-pub struct LengthConstraint {
-    edge_handle: EdgeHandle,
-}
-// Angle is relative to edge_1_handle counterclockwise
-// pivot_vert_handle must refer to a vertex that both edges share
-pub struct AngleConstraint {
-    pivot_vert_handle: VertexHandle,
-    edge_1_handle: EdgeHandle,
-    edge_1_outer_vert_handle: VertexHandle,
-    edge_2_handle: EdgeHandle,
-    edge_2_outer_vert_handle: VertexHandle,
-}
-
-// Parallel constraint between two edges
-// order does not matter here
-pub struct ParallelConstraint {
-    edge_1_handle: EdgeHandle,
-    edge_2_handle: EdgeHandle,
 }
 
 //Utilities
@@ -278,38 +168,4 @@ pub enum DrawingManagerError {
     DegenerateEdge,
     #[error("Full overlap detected")]
     FullOverlap,
-}
-
-// generated with chatGPT
-fn find_shared_and_unmatched_vertices(
-    e_1_vh_1: VertexHandle,
-    e_1_vh_2: VertexHandle,
-    e_2_vh_1: VertexHandle,
-    e_2_vh_2: VertexHandle,
-) -> Result<(VertexHandle, (VertexHandle, VertexHandle)), DrawingManagerError> {
-    // Check for degenerate edges
-    if e_1_vh_1 == e_1_vh_2 || e_2_vh_1 == e_2_vh_2 {
-        return Err(DrawingManagerError::DegenerateEdge);
-    }
-
-    // Check for shared vertices and unmatched vertices
-    match (
-        (e_1_vh_1 == e_2_vh_1, e_1_vh_1 == e_2_vh_2),
-        (e_1_vh_2 == e_2_vh_1, e_1_vh_2 == e_2_vh_2),
-    ) {
-        // Both vertices of each edge match, indicating full overlap
-        ((true, true), _) | (_, (true, true)) => Err(DrawingManagerError::FullOverlap),
-
-        // Single shared vertex with unmatched vertices
-        ((true, false), (false, false)) => Ok((e_1_vh_1, (e_1_vh_2, e_2_vh_2))),
-        ((false, true), (false, false)) => Ok((e_1_vh_1, (e_1_vh_2, e_2_vh_1))),
-        ((false, false), (true, false)) => Ok((e_1_vh_2, (e_1_vh_1, e_2_vh_2))),
-        ((false, false), (false, true)) => Ok((e_1_vh_2, (e_1_vh_1, e_2_vh_1))),
-
-        // No shared vertices
-        ((false, false), (false, false)) => Err(DrawingManagerError::NoSharedVertex),
-
-        // Handle cases that don’t match any above cases as safe errors
-        _ => Err(DrawingManagerError::NoSharedVertex),
-    }
 }
