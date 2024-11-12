@@ -38,7 +38,9 @@ impl DisplayManager {
     }
 
     pub fn update_interaction(&mut self, ui: &Ui, response: &Response) {
-        println!("{}", response.rect);
+        self.edges.iter_mut().for_each(|v| {
+            v.1.interact(ui, response);
+        });
         self.vertices.iter_mut().for_each(|v| {
             v.1.interact(ui, response);
         });
@@ -87,8 +89,10 @@ impl DisplayManager {
     pub fn add_edge(&mut self, edge_handle: EdgeHandle) {
         let weak = Rc::downgrade(self.drawing_manager.as_mut().unwrap());
         let constr_weak = Rc::downgrade(self.constraint_manager.as_mut().unwrap());
-        self.edges
-            .insert(edge_handle, EdgeDisplay::new(weak, constr_weak, edge_handle));
+        self.edges.insert(
+            edge_handle,
+            EdgeDisplay::new(weak, constr_weak, edge_handle),
+        );
         println!("edge added");
     }
 
@@ -184,13 +188,11 @@ impl VertexDisplay {
         // this is outside of the hovered() call so that it will
         // properly be called without being in the interact region
         if self.is_being_dragged && !point_response.dragged() {
-
             self.is_being_dragged = false;
             println!("drag end");
         }
 
         if self.is_being_dragged {
-
             if cursor_opt.is_some() {
                 let cursor_pt = point_response.hover_pos().unwrap();
                 self.current_drag_position = to_screen.inverse().transform_pos(cursor_pt);
@@ -214,20 +216,16 @@ impl VertexDisplay {
 
             match solver_response.state {
                 SolverState::Free => {
-                    println!("Free");
+                    //println!("Free");
                     vertex.position = try_pt
                 }
                 SolverState::Locked => {
-                    println!("Locked");
+                    //println!("Locked");
                     ()
                 }
-                SolverState::Partial => {
-                    vertex.position = solver_response.new_pos.unwrap()
-                }
+                SolverState::Partial => vertex.position = solver_response.new_pos.unwrap(),
             }
-
         }
-
     }
 
     pub fn get_shape(&self, response: &Response) -> Shape {
@@ -236,7 +234,6 @@ impl VertexDisplay {
         } else {
             Color32::GRAY
         };
-
 
         let hover_color = base_color.clone().gamma_multiply(1.2);
 
@@ -285,6 +282,9 @@ pub struct EdgeDisplay {
 
     pre_drag_position: Pos2,
     current_drag_position: Pos2,
+
+    pre_drag_start_point: Pos2,
+    pre_drag_end_point: Pos2,
 }
 
 impl EdgeDisplay {
@@ -302,16 +302,147 @@ impl EdgeDisplay {
             is_hovered: false,
             pre_drag_position: Pos2::new(0., 0.),
             current_drag_position: Pos2::new(0., 0.),
+            pre_drag_start_point: Pos2::new(0., 0.),
+            pre_drag_end_point: Pos2::new(0., 0.),
         }
     }
 
+    pub fn interact(&mut self, ui: &Ui, response: &Response) {
+        let buffer_size = Vec2::splat(30.0);
 
+        let to_screen = emath::RectTransform::from_to(
+            Rect::from_min_size(Pos2::ZERO, response.rect.size()),
+            response.rect,
+        );
+
+        let end_points: Vec<Pos2> = self
+            .get_end_points()
+            .iter()
+            .map(|p| to_screen.transform_pos(p.clone()))
+            .collect();
+
+        //let point_in_screen = to_screen.transform_pos(self.get_vertex_point());
+        let point_rect = Rect::from_two_pos(end_points[0], end_points[1]).expand(15.);
+        let point_id = response.id.with(self.edge_handle + 10000);
+        let point_response = ui.interact(point_rect, point_id, Sense::click_and_drag());
+
+        self.is_hovered = false;
+
+        let cursor_opt = point_response.hover_pos();
+
+        if point_response.hovered() && cursor_opt.is_some() {
+            let cursor_pt = point_response.hover_pos().unwrap();
+            let cursor_pt = to_screen.inverse().transform_pos(cursor_pt);
+            //self.is_hovered = true;
+            //let is_on_edge = true;
+            let is_on_edge = self.is_point_on_edge(cursor_pt, 10.0);
+            if is_on_edge {
+                self.is_hovered = true;
+
+                if point_response.clicked() {
+                    self.is_selected = !self.is_selected;
+                }
+
+                // drag begins -- initiate drag parameters
+                if !self.is_being_dragged && point_response.dragged() {
+                    // set previous position before starting to drag
+                    //let dm_shared = self.drawing_manager.upgrade().unwrap();
+                    //let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                    self.pre_drag_position = cursor_pt;
+                    self.current_drag_position = self.pre_drag_position;
+
+                    let [edge_pt_1, edge_pt_2] = self.get_end_points();
+
+                    self.pre_drag_start_point = edge_pt_1;
+                    self.pre_drag_end_point = edge_pt_2;
+
+                    self.is_being_dragged = true;
+                    println!("drag start");
+                }
+            }
+        }
+
+        // drag ends
+        // this is outside of the hovered() call so that it will
+        // properly be called without being in the interact region
+        if self.is_being_dragged && !point_response.dragged() {
+            self.is_being_dragged = false;
+            println!("drag end");
+        }
+
+        if self.is_being_dragged {
+            if cursor_opt.is_some() {
+                let cursor_pt = point_response.hover_pos().unwrap();
+                self.current_drag_position = to_screen.inverse().transform_pos(cursor_pt);
+            }
+            let try_pt = self.current_drag_position;
+            let delta = self.current_drag_position - self.pre_drag_position;
+
+            let constr_shared = self.constraint_manager.upgrade().unwrap();
+            let mut constr_borrow = constr_shared.as_ref().borrow_mut();
+
+            let solver_response = constr_borrow.solve_for_edge(
+                self.edge_handle,
+                &self.pre_drag_position,
+                &try_pt,
+                &self.pre_drag_start_point,
+                &(self.pre_drag_start_point + delta),
+                &self.pre_drag_end_point,
+                &(self.pre_drag_end_point + delta),
+            );
+
+            // get mutable vertex again, so we can modify it
+            let dm_shared = self.drawing_manager.upgrade().unwrap();
+
+            let mut eh_1 = 0;
+            let mut eh_2 = 0;
+            {
+                let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                let edge = dm_borrow.get_edge(self.edge_handle).unwrap();
+                eh_1 = edge.start_point_vh;
+                eh_2 = edge.end_point_vh;
+            }
+
+            match solver_response.state {
+                SolverState::Free => {
+                    //println!("Free");
+                    {
+                        let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                        let vert_1 = dm_borrow.get_vertex_mut(eh_1).unwrap();
+                        vert_1.position = self.pre_drag_start_point + delta;
+                    }
+                    {
+                        let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                        let vert_2 = dm_borrow.get_vertex_mut(eh_2).unwrap();
+                        vert_2.position = self.pre_drag_end_point + delta;
+                    }
+                }
+                SolverState::Locked => {
+                    //println!("Locked");
+                    ()
+                }
+                //SolverState::Partial => vertex.position = solver_response.new_pos.unwrap(),
+                SolverState::Partial => {
+                    {
+                        let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                        let vert_1 = dm_borrow.get_vertex_mut(eh_1).unwrap();
+                        vert_1.position = solver_response.new_pos.unwrap()[0] ;
+                    }
+                    {
+                        let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                        let vert_2 = dm_borrow.get_vertex_mut(eh_2).unwrap();
+                        vert_2.position = solver_response.new_pos.unwrap()[1];
+                    }
+                },
+            }
+        }
+    }
 
     pub fn get_shape(&self, response: &Response) -> Shape {
         let base_color = if self.is_selected {
-            Color32::WHITE.gamma_multiply(0.9)
+            Color32::LIGHT_BLUE.gamma_multiply(0.9)
         } else {
-            Color32::GRAY
+            Color32::LIGHT_BLUE.gamma_multiply(0.5)
         };
         let hover_color = base_color.clone().gamma_multiply(1.2);
 
@@ -352,6 +483,21 @@ impl EdgeDisplay {
             .unwrap()
             .position;
         [vert_1, vert_2]
+    }
+
+    fn is_point_on_edge(&self, point: Pos2, thickness: f32) -> bool {
+        let end_points = self.get_end_points();
+        let line_vector = end_points[1] - end_points[0];
+        let line_length_sq = line_vector.length_sq();
+
+        if line_length_sq < 0.001 {
+            let dist = point.distance(end_points[0]);
+            return dist <= thickness / 2.0;
+        }
+        let t = ((point - end_points[0]).dot(line_vector) / line_length_sq).clamp(0.0, 1.0);
+        let closest_point = end_points[0] + t * line_vector;
+
+        (point - closest_point).length() <= thickness / 2.0
     }
 }
 
@@ -448,16 +594,22 @@ impl ConstraintDisplay {
                 let e1_v_1 = get_pos_func(edge_1.start_point_vh);
                 let e1_v_2 = get_pos_func(edge_1.end_point_vh);
 
-                
-
                 let e2_v_1 = get_pos_func(edge_2.start_point_vh);
                 let e2_v_2 = get_pos_func(edge_2.end_point_vh);
 
-                
                 let stroke = Stroke::new(3.0, Color32::LIGHT_GREEN);
-                vec![Shape::rect_stroke(Rect::from_center_size(e1_v_1.lerp(e1_v_2, 0.5), Vec2::splat(10.0)), 3.0, stroke),
-                Shape::rect_stroke(Rect::from_center_size(e2_v_1.lerp(e2_v_2, 0.5), Vec2::splat(10.0)), 3.0, stroke)]
-
+                vec![
+                    Shape::rect_stroke(
+                        Rect::from_center_size(e1_v_1.lerp(e1_v_2, 0.5), Vec2::splat(10.0)),
+                        3.0,
+                        stroke,
+                    ),
+                    Shape::rect_stroke(
+                        Rect::from_center_size(e2_v_1.lerp(e2_v_2, 0.5), Vec2::splat(10.0)),
+                        3.0,
+                        stroke,
+                    ),
+                ]
             }
         }
     }

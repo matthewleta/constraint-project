@@ -43,6 +43,11 @@ impl DrawingManager {
             .ok_or(DrawingManagerError::EdgeNotFound(eh))
     }
 
+    pub fn get_edge_mut(&mut self, eh: EdgeHandle) -> Result<&mut Edge, DrawingManagerError> {
+        self.edge_map
+            .get_mut(&eh)
+            .ok_or(DrawingManagerError::EdgeNotFound(eh))
+    }
     pub fn add_edge(
         &mut self,
         vh_1: VertexHandle,

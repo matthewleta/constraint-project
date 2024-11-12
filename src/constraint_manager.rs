@@ -34,16 +34,164 @@ impl ConstraintManager {
             .ok_or(ConstraintError::ConstraintNotFound(ch))
     }
 
-    // pub fn solve_for_edge(
-    //     &self,
-    //     vh: EdgeHandle,
-    //     fixed_pos: &Pos2,
-    //     try_pos: &Pos2,
-    // ) -> SolverResponse {
+    pub fn solve_for_edge(
+        &self,
+        eh: EdgeHandle,
+        fixed_pos: &Pos2,
+        try_pos: &Pos2,
+        v1_fixed_pos: &Pos2,
+        v1_try_pos: &Pos2,
+        v2_fixed_pos: &Pos2,
+        v2_try_pos: &Pos2,
+    ) -> EdgeSolverResponse {
+        let dm_shared = if let Some(v) = &self.drawing_manager {
+            v
+        } else {
+            return EdgeSolverResponse::default();
+        };
+        
+        let vh_1 = dm_shared.borrow().get_edge(eh).unwrap().start_point_vh;
+        let vh_2 = dm_shared.borrow().get_edge(eh).unwrap().end_point_vh;
 
+        // solve endpoint vertices to get valid paths
 
+        let vert_response_1 = self.solve_for_vertex(vh_1, v1_fixed_pos, v1_try_pos);
 
-    // }
+        let vert_response_2 = self.solve_for_vertex(vh_2, v2_fixed_pos, v2_try_pos);
+
+        // exit early if either are locked
+        if let SolverState::Locked = vert_response_1.state { return EdgeSolverResponse::locked();}
+        if let SolverState::Locked = vert_response_2.state { return EdgeSolverResponse::locked();}
+
+        // exit early if both are free
+        let mut free_1 = false;
+        let mut free_2 = false;
+        if let SolverState::Free = vert_response_1.state { free_1 = true}
+        if let SolverState::Free = vert_response_2.state { free_2 = true}
+
+        if free_1 && free_2{
+            return EdgeSolverResponse::default();
+        }
+
+        // create Line from edge
+        let line_pt_1 = dm_shared.borrow().get_vertex(vh_1).unwrap().position;
+        let line_pt_2 = dm_shared.borrow().get_vertex(vh_2).unwrap().position;
+
+        let edge_line = Line{origin : try_pos.clone(), direction : (line_pt_2 - line_pt_1).normalized()};
+
+        // we have valid paths, now do an intersection of the line created by the edge
+
+        let intersect_func = |constraint_path : &ConstraintPath| -> Option<Pos2> {
+            match constraint_path {
+                ConstraintPath::Line(l2) => {
+                    let adjusted_origin_1 = edge_line.origin + - edge_line.direction * 500.0;
+                    let adjusted_origin_2 = l2.origin + -l2.direction * 500.0;
+    
+                    let inter_result = ray_ray_intersection(
+                        &Ray {
+                            origin: adjusted_origin_1,
+                            direction: edge_line.direction,
+                        },
+                        &Ray {
+                            origin: adjusted_origin_2,
+                            direction: l2.direction,
+                        },
+                    );
+    
+                    if let Some(inter) = inter_result {
+                        Some(inter.origin)
+                    } else {
+                        None
+                    }
+                }
+                ConstraintPath::Ray(r) => {
+                    // Handle Line-Ray or Ray-Line case
+                    let adjusted_origin = edge_line.origin + -edge_line.direction * 500.0;
+                    let inter_result = ray_ray_intersection(
+                        &Ray {
+                            origin: adjusted_origin,
+                            direction: edge_line.direction,
+                        },
+                        r,
+                    );
+    
+                    if let Some(inter) = inter_result {
+                        Some(inter.origin)
+                    } else {
+                        None
+                    }
+                }
+                ConstraintPath::Circle(c) => {
+                    let adjusted_origin = edge_line.origin + -edge_line.direction * 500.0;
+                    let valid_points = ray_circle_intersection(
+                        &Ray {
+                            origin: adjusted_origin,
+                            direction: edge_line.direction,
+                        },
+                        c,
+                    );
+                    if valid_points.is_empty(){
+                        None
+                    }else{
+                        Some(valid_points[0].origin)
+                    }
+
+                }
+                _ => None
+            }
+    
+        };
+
+        let mut new_pt_1 = Pos2::default();
+        let mut new_pt_2 = Pos2::default();
+
+        if free_1 {
+            new_pt_1 = v1_try_pos.clone();
+            // if vert_response_2.valid_path.is_none(){
+            //     // has no valid path, so the vert is locked, making the edge locked
+            //     return EdgeSolverResponse::locked();
+            // }
+            let v_path = vert_response_2.valid_path.unwrap();
+            let inter_2 = intersect_func(&v_path);
+
+            if inter_2.is_some(){
+                new_pt_2 = inter_2.unwrap();
+            }
+        }
+        else if free_2 {
+            new_pt_2 = v2_try_pos.clone();
+            // if vert_response_1.valid_path.is_none(){
+            //     // has no valid path, so the vert is locked, making the edge locked
+            //     return EdgeSolverResponse::locked();
+            // }
+            let v_path = vert_response_1.valid_path.unwrap();
+            let inter_1 = intersect_func(&v_path);
+
+            if inter_1.is_some(){
+                new_pt_1 = inter_1.unwrap();
+            }
+        }
+        else{
+            let v_path_1 = vert_response_1.valid_path.unwrap();
+            let inter_1 = intersect_func(&v_path_1);
+
+            if inter_1.is_none(){
+                return EdgeSolverResponse::locked();
+            }
+
+            let v_path_2 = vert_response_2.valid_path.unwrap();
+            let inter_2 = intersect_func(&v_path_2);
+
+            if inter_2.is_none(){
+                return EdgeSolverResponse::locked();
+            }
+            new_pt_1 = inter_1.unwrap();
+            new_pt_2 = inter_2.unwrap();
+        }
+        println!("pt1: {} pt2: {}",new_pt_1,new_pt_2);
+        EdgeSolverResponse{state : SolverState::Partial, new_pos : Some([new_pt_1, new_pt_2])}
+        
+    }
 
     pub fn solve_for_vertex(
         &self,
@@ -109,6 +257,7 @@ impl ConstraintManager {
         {
             return SolverResponse {
                 state: SolverState::Free,
+                valid_path: None,
                 new_pos: Some(try_pos.clone()),
             };
         }
@@ -132,6 +281,7 @@ impl ConstraintManager {
                 {
                     return SolverResponse {
                         state: SolverState::Locked,
+                        valid_path: None,
                         new_pos: None,
                     };
                 }
@@ -196,7 +346,7 @@ impl ConstraintManager {
             constraint_paths.push(ConstraintPath::Line(Line { origin, direction }));
         }
 
-        // 2d - Parallel path (Line) TODO
+        // 2d - Parallel path (Line)
 
         for pc in parallel_end_constraints {
             
@@ -210,10 +360,9 @@ impl ConstraintManager {
                 let (origin, direction) = line_data_generator(edge_2.start_point_vh, edge_2.end_point_vh);
                 constraint_paths.push(ConstraintPath::Line(Line { origin, direction }));
             }
-
         }
 
-        // 3 calculate possible paths
+        // 3 calculate path intersections
         let mut valid_path: Option<ConstraintPath> = None;
         let mut valid_points: Vec<Point> = vec![];
 
@@ -360,12 +509,14 @@ impl ConstraintManager {
                 let adjusted_pt = vp.closest_point(&try_pos);
                 return SolverResponse {
                     state: SolverState::Partial,
+                    valid_path: Some(vp),
                     new_pos: Some(adjusted_pt),
                 };
             }
             None => {
                 return SolverResponse {
                     state: SolverState::Locked,
+                    valid_path : None,
                     new_pos: None,
                 };
             }
@@ -498,7 +649,6 @@ impl Circle {
         }
 
         let dir = dir.normalized();
-        println!("dir from origin to circle {}", dir);
 
         self.origin + dir * self.radius
     }
@@ -594,6 +744,7 @@ impl ConstraintPath {
 //     }
 // }
 
+#[derive(Debug)]
 pub enum SolverState {
     Locked,
     Partial,
@@ -608,7 +759,25 @@ impl Default for SolverState {
 #[derive(Default)]
 pub struct SolverResponse {
     pub state: SolverState,
+    pub valid_path: Option<ConstraintPath>,
     pub new_pos: Option<Pos2>,
+}
+
+impl SolverResponse{
+    pub fn locked() -> Self {
+        Self{state: SolverState::Locked, valid_path: None, new_pos: None}
+    }
+}
+
+#[derive(Default)]
+pub struct EdgeSolverResponse {
+    pub state: SolverState,
+    pub new_pos: Option<[Pos2;2]>,
+}
+impl EdgeSolverResponse{
+    pub fn locked() -> Self {
+        Self{state: SolverState::Locked, new_pos: None}
+    }
 }
 
 pub enum Constraint {

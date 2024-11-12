@@ -119,10 +119,15 @@ impl CanvasView {
         //let drawing_manager = self.drawing_manager.borrow();
         let mut constraint_manager_mut = self.constraint_manager.borrow_mut();
 
-        let ch_3 = constraint_manager_mut.add_parallel_constraint(edge_handle_1, edge_handle_3).unwrap();
-        display_manager_mut.add_constraint(ch_3);
+        // let ch_3 = constraint_manager_mut.add_parallel_constraint(edge_handle_1, edge_handle_3).unwrap();
+        // display_manager_mut.add_constraint(ch_3);
 
-        let ch_1 = constraint_manager_mut.add_length_constraint(edge_handle_3).unwrap();
+        // let ch_1 = constraint_manager_mut.add_length_constraint(edge_handle_3).unwrap();
+        // display_manager_mut.add_constraint(ch_1);
+        // let ch_2 = constraint_manager_mut.add_angle_constraint(edge_handle_2, edge_handle_3).unwrap();
+        // display_manager_mut.add_constraint(ch_2);
+
+        let ch_1 = constraint_manager_mut.add_angle_constraint(edge_handle_1, edge_handle_2).unwrap();
         display_manager_mut.add_constraint(ch_1);
         let ch_2 = constraint_manager_mut.add_angle_constraint(edge_handle_2, edge_handle_3).unwrap();
         display_manager_mut.add_constraint(ch_2);
