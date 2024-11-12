@@ -18,9 +18,9 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "eframe template",
+        "Constraint Engine",
         native_options,
-        Box::new(|cc| Ok(Box::new(constraint_project::TemplateApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(constraint_project::ConstraintApp::new(cc)))),
     )
 }
 
@@ -50,7 +50,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(constraint_project::TemplateApp::new(cc)))),
+                Box::new(|cc| Ok(Box::new(constraint_project::ConstraintApp::new(cc)))),
             )
             .await;
 

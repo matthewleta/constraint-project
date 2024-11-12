@@ -1,6 +1,5 @@
 use core::f32;
 use std::collections::BTreeMap;
-use std::iter::Enumerate;
 use thiserror::Error;
 
 use crate::drawing_manager::{DrawingManager, Edge};
@@ -8,7 +7,7 @@ use crate::drawing_manager::{DrawingManager, Edge};
 use egui::{Pos2, Vec2};
 
 use std::cell::RefCell;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 type EdgeHandle = i32;
 type VertexHandle = i32;
@@ -52,12 +51,13 @@ impl ConstraintManager {
         
         let vh_1 = dm_shared.borrow().get_edge(eh).unwrap().start_point_vh;
         let vh_2 = dm_shared.borrow().get_edge(eh).unwrap().end_point_vh;
+        let edge_consts = dm_shared.borrow().get_edge(eh).unwrap().constraints.clone();
 
         // solve endpoint vertices to get valid paths
 
-        let vert_response_1 = self.solve_for_vertex(vh_1, v1_fixed_pos, v1_try_pos);
+        let vert_response_1 = self.solve_for_vertex(vh_1, v1_fixed_pos, v1_try_pos, vec![]);
 
-        let vert_response_2 = self.solve_for_vertex(vh_2, v2_fixed_pos, v2_try_pos);
+        let vert_response_2 = self.solve_for_vertex(vh_2, v2_fixed_pos, v2_try_pos, vec![]);
 
         // exit early if either are locked
         if let SolverState::Locked = vert_response_1.state { return EdgeSolverResponse::locked();}
@@ -147,10 +147,6 @@ impl ConstraintManager {
 
         if free_1 {
             new_pt_1 = v1_try_pos.clone();
-            // if vert_response_2.valid_path.is_none(){
-            //     // has no valid path, so the vert is locked, making the edge locked
-            //     return EdgeSolverResponse::locked();
-            // }
             let v_path = vert_response_2.valid_path.unwrap();
             let inter_2 = intersect_func(&v_path);
 
@@ -160,10 +156,6 @@ impl ConstraintManager {
         }
         else if free_2 {
             new_pt_2 = v2_try_pos.clone();
-            // if vert_response_1.valid_path.is_none(){
-            //     // has no valid path, so the vert is locked, making the edge locked
-            //     return EdgeSolverResponse::locked();
-            // }
             let v_path = vert_response_1.valid_path.unwrap();
             let inter_1 = intersect_func(&v_path);
 
@@ -198,6 +190,7 @@ impl ConstraintManager {
         vh: VertexHandle,
         fixed_pos: &Pos2,
         try_pos: &Pos2,
+        constraints_to_ignore: Vec<ConstraintHandle>
     ) -> SolverResponse {
         let dm_shared = if let Some(v) = &self.drawing_manager {
             v
@@ -214,6 +207,9 @@ impl ConstraintManager {
 
         //find constraints associated with vertex
         for (ch, constraint) in &self.constraint_map {
+            if constraints_to_ignore.contains(ch){
+                continue;
+            }
             match constraint {
                 Constraint::LENGTH(length_constraint) => {
                     let edge = dm_borrow.get_edge(length_constraint.edge_handle).unwrap();
@@ -383,7 +379,7 @@ impl ConstraintManager {
 
             match (current, next) {
                 (ConstraintPath::Circle(c1), ConstraintPath::Circle(c2)) => {
-                    // Handle Circle-Circle case
+                    // TODO Handle Circle-Circle case
                 }
                 (ConstraintPath::Line(l1), ConstraintPath::Line(l2)) => {
                     let adjusted_origin_1 = l1.origin + -l1.direction * 500.0;
@@ -409,7 +405,7 @@ impl ConstraintManager {
                         let cp = l2.closest_point(&l1.origin);
                         if cp.distance(l1.origin) < 0.001 {
                             // on line, overlapping
-                            //niave approact -- full one would take the smallest ray, OR line segment (which isn't supported)
+                            //naive approach -- full one would take the smallest ray, OR line segment (which isn't supported)
                             valid_path = Some(ConstraintPath::Line(l1.clone()));
                         } else {
                             valid_path = None;
@@ -433,7 +429,7 @@ impl ConstraintManager {
                         let cp = temp_line.closest_point(&r1.origin);
                         if cp.distance(r1.origin) < 0.001 {
                             // on line, overlapping
-                            //niave approact -- full one would take the smallest ray, OR line segment (which isn't supported)
+                            //naive approach -- full one would take the smallest ray, OR line segment (which isn't supported)
                             valid_path = Some(ConstraintPath::Ray(Ray {
                                 origin: r1.origin,
                                 direction: r1.direction,
@@ -521,23 +517,6 @@ impl ConstraintManager {
                 };
             }
         }
-
-        // for (i, path) in constraint_paths.iter().enumerate() {
-        //     if i == 0 {
-        //         valid_paths.push(path);
-        //     }
-        // }
-
-        // if !constraint_paths.is_empty() {
-        //     let adjusted_pt = constraint_paths[0].closest_point(try_pos);
-
-        //     return SolverResponse {
-        //         state: SolverState::Partial,
-        //         new_pos: Some(adjusted_pt),
-        //     };
-        // }
-
-        // if none passed before, return free solverResponse
     }
 
     // TODO add solver check for collision on existing constraints
@@ -610,7 +589,7 @@ impl ConstraintManager {
         edge_2_handle: EdgeHandle,
     ) -> Result<ConstraintHandle, ConstraintError> {
         let dm_shared = self.drawing_manager.as_ref().unwrap();
-        let dm_borrowed = dm_shared.borrow();
+        let mut dm_borrowed = dm_shared.borrow_mut();
 
         if !dm_borrowed.has_edge(&edge_1_handle) {
             return Err(ConstraintError::ConstraintNotAdded);
@@ -629,6 +608,10 @@ impl ConstraintManager {
 
         self.constraint_map
             .insert(next_id, Constraint::PARALLEL(parallel_constraint));
+
+            dm_borrowed.get_edge_mut(edge_1_handle).unwrap().constraints.push(next_id);
+            dm_borrowed.get_edge_mut(edge_2_handle).unwrap().constraints.push(next_id);
+
         Ok(next_id)
     }
 }
@@ -711,38 +694,6 @@ impl ConstraintPath {
         }
     }
 }
-
-// fn compare_paths(paths: &[ConstraintPath]) {
-//     for i in 0..paths.len().saturating_sub(1) {
-//         let current = &paths[i];
-//         let next = &paths[i + 1];
-
-//         match (current, next) {
-//             (ConstraintPath::Circle(c1), ConstraintPath::Circle(c2)) => {
-//                 // Handle Circle-Circle case
-//             }
-//             (ConstraintPath::Line(l1), ConstraintPath::Line(l2)) => {
-//                 // Handle Line-Line case
-//             }
-//             (ConstraintPath::Ray(r1), ConstraintPath::Ray(r2)) => {
-//                 // Handle Ray-Ray case
-//             }
-//             (ConstraintPath::Circle(c), ConstraintPath::Line(l))
-//             | (ConstraintPath::Line(l), ConstraintPath::Circle(c)) => {
-//                 // Handle Circle-Line or Line-Circle case
-//             }
-//             (ConstraintPath::Circle(c), ConstraintPath::Ray(r))
-//             | (ConstraintPath::Ray(r), ConstraintPath::Circle(c)) => {
-//                 // Handle Circle-Ray or Ray-Circle case
-//             }
-//             (ConstraintPath::Line(l), ConstraintPath::Ray(r))
-//             | (ConstraintPath::Ray(r), ConstraintPath::Line(l)) => {
-//                 // Handle Line-Ray or Ray-Line case
-//             }
-//             _ =>{}
-//         }
-//     }
-// }
 
 #[derive(Debug)]
 pub enum SolverState {
@@ -850,7 +801,6 @@ pub enum ConstraintError {
     FullOverlap,
 }
 
-// generated with chatGPT
 fn find_shared_and_unmatched_vertices(
     e_1_vh_1: VertexHandle,
     e_1_vh_2: VertexHandle,

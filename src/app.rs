@@ -4,7 +4,7 @@ use crate::canvas_view::CanvasView;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 #[derive(Default)]
-pub struct TemplateApp {
+pub struct ConstraintApp {
     // Example stuff:
     label: String,
 
@@ -16,31 +16,21 @@ pub struct TemplateApp {
 }
 
 
-impl TemplateApp {
+impl ConstraintApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        println!("test1");
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
-        //default.canvas_view.print_values();
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        // if let Some(storage) = cc.storage {
-        //     return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        // }
 
         let mut default : Self = Default::default();
         default.canvas_view.setup_test_values_1();
         default.canvas_view.setup_test_values_2();
-
+        default.canvas_view.setup_test_values_3();
+        default.canvas_view.setup_test_values_4();
 
         default
     }
 }
 
-impl eframe::App for TemplateApp {
+impl eframe::App for ConstraintApp {
     /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);

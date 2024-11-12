@@ -1,8 +1,8 @@
 use crate::constraint_manager::{
-    AngleConstraint, Constraint, ConstraintManager, LengthConstraint, ParallelConstraint,
-    SolverResponse, SolverState,
+    Constraint, ConstraintManager,
+    SolverState,
 };
-use crate::drawing_manager::{DrawingManager, Edge};
+use crate::drawing_manager::DrawingManager;
 
 use core::f32;
 use std::collections::HashMap;
@@ -200,6 +200,7 @@ impl VertexDisplay {
 
             let constr_shared = self.constraint_manager.upgrade().unwrap();
             let mut constr_borrow = constr_shared.as_ref().borrow_mut();
+            
 
             let try_pt = self.current_drag_position;
 
@@ -207,6 +208,7 @@ impl VertexDisplay {
                 self.vertex_handle,
                 &self.pre_drag_position,
                 &try_pt,
+                vec![]
             );
 
             // get mutable vertex again, so we can modify it

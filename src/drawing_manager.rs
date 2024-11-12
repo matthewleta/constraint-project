@@ -107,12 +107,14 @@ impl DrawingManager {
 pub struct Edge {
     pub start_point_vh: VertexHandle,
     pub end_point_vh: VertexHandle,
+    pub constraints: Vec<ConstraintHandle>
 }
 impl Edge {
     pub fn new(start_point_vh: VertexHandle, end_point_vh: VertexHandle) -> Self {
         Self {
             start_point_vh,
             end_point_vh,
+            constraints : vec![]
         }
     }
     pub fn direction_from_edge( drawing_manager : &DrawingManager, edge : &Edge) -> Vec2{
