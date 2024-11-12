@@ -32,7 +32,8 @@ impl TemplateApp {
         // }
 
         let mut default : Self = Default::default();
-        default.canvas_view.setup_test_values();
+        default.canvas_view.setup_test_values_1();
+        default.canvas_view.setup_test_values_2();
 
 
         default
