@@ -1,6 +1,5 @@
 use crate::constraint_manager::{
-    Constraint, ConstraintManager,
-    SolverState,
+    Circle, Constraint, ConstraintManager, ConstraintPath, Line, Ray, SolverState,
 };
 use crate::drawing_manager::DrawingManager;
 
@@ -24,6 +23,8 @@ pub struct DisplayManager {
     edges: HashMap<VertexHandle, EdgeDisplay>,
     vertices: HashMap<EdgeHandle, VertexDisplay>,
     constraints: HashMap<ConstraintHandle, ConstraintDisplay>,
+
+    pub constraint_paths: Vec<ConstraintPath>,
 }
 
 impl DisplayManager {
@@ -38,15 +39,21 @@ impl DisplayManager {
     }
 
     pub fn update_interaction(&mut self, ui: &Ui, response: &Response) {
-        self.edges.iter_mut().for_each(|v| {
-            v.1.interact(ui, response);
+        self.constraint_paths.clear();
+
+        self.edges.iter_mut().for_each(|e| {
+            e.1.interact(&mut self.constraint_paths, ui, response);
         });
         self.vertices.iter_mut().for_each(|v| {
-            v.1.interact(ui, response);
+            v.1.interact(&mut self.constraint_paths, ui, response);
         });
     }
 
     pub fn draw(&self, ui: &mut Ui, response: &Response, painter: &Painter) {
+        let const_shapes = self.generate_constraint_shapes(ui, response);
+
+        painter.extend(const_shapes);
+
         let segments: Vec<Shape> = self
             .edges
             .iter()
@@ -70,6 +77,51 @@ impl DisplayManager {
         }
 
         painter.extend(constr_shapes);
+    }
+
+    pub fn generate_constraint_shapes(&self, ui: &mut Ui, response: &Response) -> Vec<Shape> {
+        let constraint_color = Color32::LIGHT_RED;
+        let mut shapes: Vec<Shape> = vec![];
+
+        let to_screen = emath::RectTransform::from_to(
+            Rect::from_min_size(Pos2::ZERO, response.rect.size()),
+            response.rect,
+        );
+        for path in &self.constraint_paths {
+            match path {
+                ConstraintPath::Circle(c) => {
+                    let point_in_screen = to_screen.transform_pos(c.origin);
+
+                    shapes.push(Shape::circle_stroke(
+                        point_in_screen,
+                        c.radius,
+                        Stroke::new(2.0, constraint_color),
+                    ));
+                }
+                ConstraintPath::Line(l) => {
+                    let point_in_screen = to_screen.transform_pos(l.origin);
+                    shapes.push(Shape::line_segment(
+                        [
+                            point_in_screen + l.direction * -5000.,
+                            point_in_screen + l.direction * 5000.,
+                        ],
+                        Stroke::new(2.0, constraint_color),
+                    ));
+                }
+                ConstraintPath::Ray(r) => {
+                    let point_in_screen = to_screen.transform_pos(r.origin);
+
+                    shapes.push(Shape::line_segment(
+                        [point_in_screen, point_in_screen + r.direction * 5000.],
+                        Stroke::new(2.0, constraint_color),
+                    ));
+                }
+                // ConstraintPath::Point(p) => p.closest_point(point),
+                _ => (),
+            }
+        }
+
+        shapes
     }
 
     pub fn print_edge_length(&self) {
@@ -137,7 +189,12 @@ impl VertexDisplay {
         }
     }
 
-    pub fn interact(&mut self, ui: &Ui, response: &Response) {
+    pub fn interact(
+        &mut self,
+        constraint_paths: &mut Vec<ConstraintPath>,
+        ui: &Ui,
+        response: &Response,
+    ) {
         let buffer_size = Vec2::splat(30.0);
 
         let to_screen = emath::RectTransform::from_to(
@@ -200,7 +257,6 @@ impl VertexDisplay {
 
             let constr_shared = self.constraint_manager.upgrade().unwrap();
             let mut constr_borrow = constr_shared.as_ref().borrow_mut();
-            
 
             let try_pt = self.current_drag_position;
 
@@ -208,8 +264,12 @@ impl VertexDisplay {
                 self.vertex_handle,
                 &self.pre_drag_position,
                 &try_pt,
-                vec![]
+                vec![],
             );
+
+            if let Some(p) = solver_response.valid_path {
+                constraint_paths.push(p.clone())
+            }
 
             // get mutable vertex again, so we can modify it
             let dm_shared = self.drawing_manager.upgrade().unwrap();
@@ -309,7 +369,12 @@ impl EdgeDisplay {
         }
     }
 
-    pub fn interact(&mut self, ui: &Ui, response: &Response) {
+    pub fn interact(
+        &mut self,
+        constraint_paths: &mut Vec<ConstraintPath>,
+        ui: &Ui,
+        response: &Response,
+    ) {
         let buffer_size = Vec2::splat(30.0);
 
         let to_screen = emath::RectTransform::from_to(
@@ -393,6 +458,10 @@ impl EdgeDisplay {
                 &(self.pre_drag_end_point + delta),
             );
 
+            if let Some(p) = solver_response.valid_paths {
+                constraint_paths.extend(p.clone());
+            }
+
             // get mutable vertex again, so we can modify it
             let dm_shared = self.drawing_manager.upgrade().unwrap();
 
@@ -428,14 +497,14 @@ impl EdgeDisplay {
                     {
                         let mut dm_borrow = dm_shared.as_ref().borrow_mut();
                         let vert_1 = dm_borrow.get_vertex_mut(eh_1).unwrap();
-                        vert_1.position = solver_response.new_pos.unwrap()[0] ;
+                        vert_1.position = solver_response.new_pos.unwrap()[0];
                     }
                     {
                         let mut dm_borrow = dm_shared.as_ref().borrow_mut();
                         let vert_2 = dm_borrow.get_vertex_mut(eh_2).unwrap();
                         vert_2.position = solver_response.new_pos.unwrap()[1];
                     }
-                },
+                }
             }
         }
     }
