@@ -36,7 +36,7 @@ impl ConstraintManager {
     pub fn solve_for_edge(
         &self,
         eh: EdgeHandle,
-        fixed_pos: &Pos2,
+        _fixed_pos: &Pos2,
         try_pos: &Pos2,
         v1_fixed_pos: &Pos2,
         v1_try_pos: &Pos2,
@@ -162,7 +162,6 @@ impl ConstraintManager {
 
         if is_v1_free {
             // vert 1 is free, calculate intersection for vert 2
-            //new_pt_1 = v1_try_pos.clone();
             let valid_path_2 = vert_response_2.valid_path.unwrap().clone();
             let inter_2 = intersect_func(&valid_path_2);
 
@@ -176,7 +175,6 @@ impl ConstraintManager {
             new_pt_1 = v1_fixed_pos.clone() + delta;
         } else if is_v2_free {
             // vert 2 is free, calculate intersection for vert 1
-            new_pt_2 = v2_try_pos.clone();
             let valid_path_1 = vert_response_1.valid_path.unwrap().clone();
             let inter_1 = intersect_func(&valid_path_1);
 
@@ -594,7 +592,10 @@ impl ConstraintManager {
 fn intersect_paths(constraint_paths: Vec<ConstraintPath>) -> Option<ConstraintPath> {
     // 3 calculate path intersections
     let mut valid_path: Option<ConstraintPath> = None;
-    let mut valid_points: Vec<Point> = vec![];
+
+    // intentionally unsused right now -- points not supported yet
+    // may show up as a type of path
+    let mut _valid_points: Vec<Point> = vec![];
 
     if !constraint_paths.is_empty() {
         valid_path = Some(constraint_paths[0].clone());
@@ -612,7 +613,7 @@ fn intersect_paths(constraint_paths: Vec<ConstraintPath>) -> Option<ConstraintPa
         let next = &constraint_paths[i + 1];
 
         match (current, next) {
-            (ConstraintPath::Circle(c1), ConstraintPath::Circle(c2)) => {
+            (ConstraintPath::Circle(_c1), ConstraintPath::Circle(_c2)) => {
                 // TODO Handle Circle-Circle case
             }
             (ConstraintPath::Line(l1), ConstraintPath::Line(l2)) => {
@@ -631,7 +632,7 @@ fn intersect_paths(constraint_paths: Vec<ConstraintPath>) -> Option<ConstraintPa
                 );
 
                 if let Some(inter) = inter_result {
-                    valid_points = vec![inter];
+                    _valid_points = vec![inter];
                     valid_path = None;
                 } else {
                     // check if they are coincident
@@ -650,7 +651,7 @@ fn intersect_paths(constraint_paths: Vec<ConstraintPath>) -> Option<ConstraintPa
                 let inter_result = ray_ray_intersection(r1, r2);
 
                 if let Some(inter) = inter_result {
-                    valid_points = vec![inter];
+                    _valid_points = vec![inter];
                     valid_path = None;
                 } else {
                     // check if they are coincident
@@ -681,7 +682,7 @@ fn intersect_paths(constraint_paths: Vec<ConstraintPath>) -> Option<ConstraintPa
                 valid_path = None;
 
                 let adjusted_origin = l.origin + -l.direction * 500.0;
-                valid_points = ray_circle_intersection(
+                _valid_points = ray_circle_intersection(
                     &Ray {
                         origin: adjusted_origin,
                         direction: l.direction,
@@ -694,7 +695,7 @@ fn intersect_paths(constraint_paths: Vec<ConstraintPath>) -> Option<ConstraintPa
                 // This case will never return paths
                 valid_path = None;
 
-                valid_points = ray_circle_intersection(
+                _valid_points = ray_circle_intersection(
                     &Ray {
                         origin: r.origin,
                         direction: r.direction,
@@ -715,7 +716,7 @@ fn intersect_paths(constraint_paths: Vec<ConstraintPath>) -> Option<ConstraintPa
                 );
 
                 if let Some(inter) = inter_result {
-                    valid_points = vec![inter];
+                    _valid_points = vec![inter];
                     valid_path = None;
                 } else {
                     // check if they are coincident
@@ -790,7 +791,7 @@ pub struct Point {
 }
 
 impl Point {
-    pub fn closest_point(&self, point: &Pos2) -> Pos2 {
+    pub fn closest_point(&self) -> Pos2 {
         self.origin
     }
 }
@@ -809,8 +810,7 @@ impl ConstraintPath {
             ConstraintPath::Circle(c) => c.closest_point(point),
             ConstraintPath::Line(l) => l.closest_point(point),
             ConstraintPath::Ray(r) => r.closest_point(point),
-            ConstraintPath::Point(p) => p.closest_point(point),
-            _ => Pos2::new(1., 1.),
+            ConstraintPath::Point(p) => p.closest_point(),
         }
     }
 }
@@ -864,29 +864,6 @@ pub enum Constraint {
     LENGTH(LengthConstraint),
     ANGLE(AngleConstraint),
     PARALLEL(ParallelConstraint),
-}
-
-impl Constraint {
-    fn try_get_length(&self) -> Option<&LengthConstraint> {
-        match self {
-            Constraint::LENGTH(constraint) => Some(constraint),
-            _ => None,
-        }
-    }
-
-    fn try_get_angle(&self) -> Option<&AngleConstraint> {
-        match self {
-            Constraint::ANGLE(constraint) => Some(constraint),
-            _ => None,
-        }
-    }
-
-    fn try_get_parallel(&self) -> Option<&ParallelConstraint> {
-        match self {
-            Constraint::PARALLEL(constraint) => Some(constraint),
-            _ => None,
-        }
-    }
 }
 
 // Length Constraint is primarily around an edge only

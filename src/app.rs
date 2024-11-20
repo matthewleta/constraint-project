@@ -18,7 +18,7 @@ pub struct ConstraintApp {
 
 impl ConstraintApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
 
         let mut default : Self = Default::default();
         default.canvas_view.setup_test_values_1();

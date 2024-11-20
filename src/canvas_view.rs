@@ -1,4 +1,4 @@
-use egui::{emath, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke, Vec2};
+use egui::{Frame, Pos2, Sense, Vec2};
 
 use crate::constraint_manager::ConstraintManager;
 use crate::display_manager::DisplayManager;
@@ -43,8 +43,11 @@ impl Default for CanvasView {
 
 impl CanvasView {
     pub fn setup_test_values_1(&mut self) {
+        #[allow(unused_assignments)]
         let mut edge_handle_1 = 0;
+        #[allow(unused_assignments)]
         let mut edge_handle_2 = 0;
+        #[allow(unused_assignments)]
         let mut edge_handle_3 = 0;
 
         let mut display_manager_mut = self.display_manager.borrow_mut();
@@ -74,17 +77,24 @@ impl CanvasView {
 
         let mut constraint_manager_mut = self.constraint_manager.borrow_mut();
 
-        let ch_3 = constraint_manager_mut.add_parallel_constraint(edge_handle_1, edge_handle_3).unwrap();
+        let ch_3 = constraint_manager_mut
+            .add_parallel_constraint(edge_handle_1, edge_handle_3)
+            .unwrap();
         display_manager_mut.add_constraint(ch_3);
 
         // let ch_1 = constraint_manager_mut.add_length_constraint(edge_handle_3).unwrap();
         // display_manager_mut.add_constraint(ch_1);
-        let ch_2 = constraint_manager_mut.add_angle_constraint(edge_handle_2, edge_handle_3).unwrap();
+        let ch_2 = constraint_manager_mut
+            .add_angle_constraint(edge_handle_2, edge_handle_3)
+            .unwrap();
         display_manager_mut.add_constraint(ch_2);
     }
     pub fn setup_test_values_2(&mut self) {
+        #[allow(unused_assignments)]
         let mut edge_handle_1 = 0;
+        #[allow(unused_assignments)]
         let mut edge_handle_2 = 0;
+        #[allow(unused_assignments)]
         let mut edge_handle_3 = 0;
 
         let mut display_manager_mut = self.display_manager.borrow_mut();
@@ -115,16 +125,24 @@ impl CanvasView {
         //let drawing_manager = self.drawing_manager.borrow();
         let mut constraint_manager_mut = self.constraint_manager.borrow_mut();
 
-        let ch_3 = constraint_manager_mut.add_parallel_constraint(edge_handle_1, edge_handle_3).unwrap();
+        let ch_3 = constraint_manager_mut
+            .add_parallel_constraint(edge_handle_1, edge_handle_3)
+            .unwrap();
         display_manager_mut.add_constraint(ch_3);
 
-        let ch_1 = constraint_manager_mut.add_length_constraint(edge_handle_3).unwrap();
+        let ch_1 = constraint_manager_mut
+            .add_length_constraint(edge_handle_3)
+            .unwrap();
         display_manager_mut.add_constraint(ch_1);
     }
     pub fn setup_test_values_3(&mut self) {
+        #[allow(unused_assignments)]
         let mut edge_handle_1 = 0;
+        #[allow(unused_assignments)]
         let mut edge_handle_2 = 0;
-        let mut edge_handle_3 = 0;
+        #[allow(unused_assignments)]
+        let mut edge_handle_3 = 0; 
+        #[allow(unused_assignments)]
         let mut edge_handle_4 = 0;
 
         let mut display_manager_mut = self.display_manager.borrow_mut();
@@ -154,16 +172,24 @@ impl CanvasView {
         // the drawing manager internally, and rust won't allow it to happen twice
         let mut constraint_manager_mut = self.constraint_manager.borrow_mut();
 
-        let ch_1 = constraint_manager_mut.add_angle_constraint(edge_handle_1, edge_handle_2).unwrap();
+        let ch_1 = constraint_manager_mut
+            .add_angle_constraint(edge_handle_1, edge_handle_2)
+            .unwrap();
         display_manager_mut.add_constraint(ch_1);
-        let ch_2 = constraint_manager_mut.add_angle_constraint(edge_handle_2, edge_handle_3).unwrap();
+        let ch_2 = constraint_manager_mut
+            .add_angle_constraint(edge_handle_2, edge_handle_3)
+            .unwrap();
         display_manager_mut.add_constraint(ch_2);
     }
 
     pub fn setup_test_values_4(&mut self) {
+        #[allow(unused_assignments)]
         let mut edge_handle_1 = 0;
+        #[allow(unused_assignments)]
         let mut edge_handle_2 = 0;
-        let mut edge_handle_3 = 0;
+        #[allow(unused_assignments)]
+        let mut edge_handle_3 = 0; 
+        #[allow(unused_assignments)]
         let mut edge_handle_4 = 0;
 
         let mut display_manager_mut = self.display_manager.borrow_mut();
@@ -193,9 +219,13 @@ impl CanvasView {
         // the drawing manager internally, and rust won't allow it to happen twice
         let mut constraint_manager_mut = self.constraint_manager.borrow_mut();
 
-        let ch_1 = constraint_manager_mut.add_length_constraint(edge_handle_1).unwrap();
+        let ch_1 = constraint_manager_mut
+            .add_length_constraint(edge_handle_1)
+            .unwrap();
         display_manager_mut.add_constraint(ch_1);
-        let ch_2 = constraint_manager_mut.add_angle_constraint(edge_handle_2, edge_handle_3).unwrap();
+        let ch_2 = constraint_manager_mut
+            .add_angle_constraint(edge_handle_2, edge_handle_3)
+            .unwrap();
         display_manager_mut.add_constraint(ch_2);
     }
 
@@ -209,7 +239,7 @@ impl CanvasView {
                 .borrow_mut()
                 .update_interaction(ui, &response);
 
-            display_manager.borrow().draw(ui, &response, &painter);
+            display_manager.borrow().draw(&response, &painter);
         });
     }
 

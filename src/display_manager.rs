@@ -1,5 +1,5 @@
 use crate::constraint_manager::{
-    Circle, Constraint, ConstraintManager, ConstraintPath, Line, Ray, SolverState,
+    Constraint, ConstraintManager, ConstraintPath,  SolverState,
 };
 use crate::drawing_manager::DrawingManager;
 
@@ -49,8 +49,8 @@ impl DisplayManager {
         });
     }
 
-    pub fn draw(&self, ui: &mut Ui, response: &Response, painter: &Painter) {
-        let const_shapes = self.generate_constraint_shapes(ui, response);
+    pub fn draw(&self, response: &Response, painter: &Painter) {
+        let const_shapes = self.generate_constraint_shapes(response);
 
         painter.extend(const_shapes);
 
@@ -79,7 +79,7 @@ impl DisplayManager {
         painter.extend(constr_shapes);
     }
 
-    pub fn generate_constraint_shapes(&self, ui: &mut Ui, response: &Response) -> Vec<Shape> {
+    pub fn generate_constraint_shapes(&self, response: &Response) -> Vec<Shape> {
         let constraint_color = Color32::LIGHT_RED;
         let mut shapes: Vec<Shape> = vec![];
 
@@ -256,7 +256,7 @@ impl VertexDisplay {
             }
 
             let constr_shared = self.constraint_manager.upgrade().unwrap();
-            let mut constr_borrow = constr_shared.as_ref().borrow_mut();
+            let constr_borrow = constr_shared.as_ref().borrow_mut();
 
             let try_pt = self.current_drag_position;
 
@@ -375,8 +375,6 @@ impl EdgeDisplay {
         ui: &Ui,
         response: &Response,
     ) {
-        let buffer_size = Vec2::splat(30.0);
-
         let to_screen = emath::RectTransform::from_to(
             Rect::from_min_size(Pos2::ZERO, response.rect.size()),
             response.rect,
@@ -446,7 +444,7 @@ impl EdgeDisplay {
             let delta = self.current_drag_position - self.pre_drag_position;
 
             let constr_shared = self.constraint_manager.upgrade().unwrap();
-            let mut constr_borrow = constr_shared.as_ref().borrow_mut();
+            let constr_borrow = constr_shared.as_ref().borrow_mut();
 
             let solver_response = constr_borrow.solve_for_edge(
                 self.edge_handle,
@@ -465,10 +463,12 @@ impl EdgeDisplay {
             // get mutable vertex again, so we can modify it
             let dm_shared = self.drawing_manager.upgrade().unwrap();
 
+            #[allow(unused_assignments)]
             let mut eh_1 = 0;
+            #[allow(unused_assignments)]
             let mut eh_2 = 0;
             {
-                let mut dm_borrow = dm_shared.as_ref().borrow_mut();
+                let dm_borrow = dm_shared.as_ref().borrow_mut();
                 let edge = dm_borrow.get_edge(self.edge_handle).unwrap();
                 eh_1 = edge.start_point_vh;
                 eh_2 = edge.end_point_vh;
